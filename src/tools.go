@@ -47,10 +47,12 @@ type RedisTools struct {
 }
 
 func (t RedisTools) Cas(ctx context.Context, key string, oldValue interface{}, newValue interface{}) (bool, error) {
-	res, err := t.client.Eval(ctx, compareAndSwapScript, oldValue, newValue)
-
+	res, err := t.client.Eval(ctx, compareAndSwapScript, []string{key}, oldValue, newValue).Result()
 	if err != nil {
 		return false, err
+	}
+	if res == true {
+		return true, nil
 	}
 }
 
@@ -58,21 +60,52 @@ func (t RedisTools) CasEx(ctx context.Context, key string, oldValue interface{},
 	if expire == 0 {
 		return t.Cas(ctx, key, oldValue, newValue)
 	}
-
+	var res bool
+	var err error
 	if usePrecise(expire) {
-		ti := parseMill(expire)
-		res, err := t.client.Eval(ctx, fmt.Sprintf(compareAndSwapEXScript, ti), oldValue, newValue)
-
-	} else if expire%time.Second == 0 {
-		ti := parseSec(expire)
-		res, err := t.client.Eval(ctx, fmt.Sprintf(compareAndSwapEXScript, ti), oldValue, newValue)
+		res, err = t.client.Eval(ctx, fmt.Sprintf(compareAndSwapEXScript, "PX"), []string{key}, oldValue, newValue, formatMill(expire)).Result()
+	} else if expire > 0 {
+		res, err = t.client.Eval(ctx, fmt.Sprintf(compareAndSwapEXScript, "EX"), []string{key}, oldValue, newValue, formatSec(expire)).Result()
 
 	} else {
-		res, err := t.client.Eval(ctx, compareAndSwapKeepTTLScript, oldValue, newValue)
+		res, err = t.client.Eval(ctx, compareAndSwapKeepTTLScript, []string{key}, oldValue, newValue).Result()
 	}
 
+	if err != nil {
+		return false, err
+	}
+	if res == true {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (t RedisTools) Cad(ctx context.Context, key string, oldValue interface{}) (bool, error) {
 
+	res, err := t.client.Eval(ctx, compareAndDeleteScript, []string{key}, oldValue).Result()
+	if err != nil {
+		return false, err
+	}
+	if res == true {
+		return true, nil
+	}
+	return false, nil
+}
+
+func usePrecise(expire time.Duration) bool {
+	return expire%time.Second != 0
+}
+
+func formatMill(dur time.Duration) int64 {
+	if dur > 0 && dur < time.Millisecond {
+		return 1
+	}
+	return int64(dur % time.Millisecond)
+}
+
+func formatSec(dur time.Duration) int64 {
+	if dur > 0 && dur < time.Second {
+		return 1
+	}
+	return int64(dur % time.Second)
 }

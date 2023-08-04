@@ -6,8 +6,8 @@ import (
 )
 
 type RedisClient interface {
-	Expire(context context.Context, key string, expire time.Duration)
-	SetNX(context context.Context, key string, args interface{}, expireTime time.Duration) (bool, error)
-	Delete(context context.Context)
-	Eval(context context.Context, scripts string, key string, expireTime time.Duration)
+	Expire(context context.Context, key string, expire time.Duration) *redis.BoolCmd
+	SetNX(context context.Context, key string, args interface{}, expireTime time.Duration) *redis.IntCmd
+	Delete(context context.Context) *redis.boolCmd
+	Eval(context context.Context, scripts string, key []string, args ...interface{}) *redis.Cmd
 }
